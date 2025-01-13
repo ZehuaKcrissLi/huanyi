@@ -6,7 +6,7 @@ interface ImageUpload {
   id: string;
   file: File | null;
   selected: boolean;
-  type: 'model' | 'upper' | 'lower';
+  type: 'model' | 'upper' | 'lower' | 'dress';
 }
 
 interface ResultImage {
@@ -22,6 +22,112 @@ interface PreviewModal {
   fileName: string;
 }
 
+interface ClothesSegmentConfig {
+  Hat: boolean;
+  Hair: boolean;
+  Face: boolean;
+  Sunglasses: boolean;
+  'Upper-clothes': boolean;
+  Skirt: boolean;
+  Dress: boolean;
+  Belt: boolean;
+  Pants: boolean;
+  'Left-arm': boolean;
+  'Right-arm': boolean;
+  'Left-leg': boolean;
+  'Right-leg': boolean;
+  Bag: boolean;
+  Scarf: boolean;
+  'Left-shoe': boolean;
+  'Right-shoe': boolean;
+  Background: boolean;
+}
+
+const CLOTHES_CONFIGS: Record<'upper' | 'lower' | 'dress', ClothesSegmentConfig> = {
+  upper: {
+    Hat: false,
+    Hair: false,
+    Face: false,
+    Sunglasses: false,
+    'Upper-clothes': true,
+    Skirt: false,
+    Dress: false,
+    Belt: false,
+    Pants: false,
+    'Left-arm': true,
+    'Right-arm': true,
+    'Left-leg': false,
+    'Right-leg': false,
+    Bag: false,
+    Scarf: false,
+    'Left-shoe': false,
+    'Right-shoe': false,
+    Background: false
+  },
+  lower: {
+    Hat: false,
+    Hair: false,
+    Face: false,
+    Sunglasses: false,
+    'Upper-clothes': false,
+    Skirt: true,
+    Dress: false,
+    Belt: false,
+    Pants: true,
+    'Left-arm': false,
+    'Right-arm': false,
+    'Left-leg': true,
+    'Right-leg': true,
+    Bag: false,
+    Scarf: false,
+    'Left-shoe': true,
+    'Right-shoe': true,
+    Background: false
+  },
+  dress: {
+    Hat: false,
+    Hair: false,
+    Face: false,
+    Sunglasses: false,
+    'Upper-clothes': true,
+    Skirt: true,
+    Dress: true,
+    Belt: false,
+    Pants: false,
+    'Left-arm': true,
+    'Right-arm': true,
+    'Left-leg': true,
+    'Right-leg': true,
+    Bag: false,
+    Scarf: false,
+    'Left-shoe': true,
+    'Right-shoe': true,
+    Background: false
+  }
+};
+
+const COMFYUI_BASE_URL = 'http://127.0.0.1:8188';
+
+const WORKFLOW_API = {
+  "1": {
+    "inputs": {
+      "image": "",
+      "upload": "image"
+    },
+    "class_type": "LoadImage"
+  },
+  "6": {
+    "inputs": {
+      "image": "",
+      "upload": "image"
+    },
+    "class_type": "LoadImage"
+  }
+};
+
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 1000; // 1秒
+
 function App() {
   const [modelImages, setModelImages] = useState<ImageUpload[]>([
     { id: '1', file: null, selected: false, type: 'model' }
@@ -32,6 +138,9 @@ function App() {
   const [lowerImages, setLowerImages] = useState<ImageUpload[]>([
     { id: '1', file: null, selected: false, type: 'lower' }
   ]);
+  const [dressImages, setDressImages] = useState<ImageUpload[]>([
+    { id: '1', file: null, selected: false, type: 'dress' }
+  ]);
   const [resultImages, setResultImages] = useState<ResultImage[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,7 +148,7 @@ function App() {
 
   const selectedProductCount = upperImages.length + lowerImages.length;
 
-  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>, type: 'model' | 'upper' | 'lower', id: string) => {
+  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>, type: 'model' | 'upper' | 'lower' | 'dress', id: string) => {
     const file = event.target.files?.[0];
     if (file) {
       switch (type) {
@@ -58,12 +167,17 @@ function App() {
             img.id === id ? { ...img, file, selected: false } : img
           ));
           break;
+        case 'dress':
+          setDressImages(prev => prev.map(img => 
+            img.id === id ? { ...img, file, selected: false } : img
+          ));
+          break;
       }
       setError(null);
     }
   };
 
-  const addUploadComponent = (type: 'model' | 'upper' | 'lower') => {
+  const addUploadComponent = (type: 'model' | 'upper' | 'lower' | 'dress') => {
     const newId = Date.now().toString();
     switch (type) {
       case 'model':
@@ -75,10 +189,13 @@ function App() {
       case 'lower':
         setLowerImages(prev => [...prev, { id: newId, file: null, selected: false, type }]);
         break;
+      case 'dress':
+        setDressImages(prev => [...prev, { id: newId, file: null, selected: false, type }]);
+        break;
     }
   };
 
-  const removeUploadComponent = (type: 'model' | 'upper' | 'lower', id: string) => {
+  const removeUploadComponent = (type: 'model' | 'upper' | 'lower' | 'dress', id: string) => {
     switch (type) {
       case 'model':
         setModelImages(prev => prev.filter(img => img.id !== id));
@@ -89,10 +206,13 @@ function App() {
       case 'lower':
         setLowerImages(prev => prev.filter(img => img.id !== id));
         break;
+      case 'dress':
+        setDressImages(prev => prev.filter(img => img.id !== id));
+        break;
     }
   };
 
-  const handleSelection = (type: 'model' | 'upper' | 'lower', id: string) => {
+  const handleSelection = (type: 'model' | 'upper' | 'lower' | 'dress', id: string) => {
     switch (type) {
       case 'model':
         setModelImages(prev => prev.map(img => ({
@@ -105,12 +225,24 @@ function App() {
           ...img,
           selected: img.id === id
         })));
+        setLowerImages(prev => prev.map(img => ({ ...img, selected: false })));
+        setDressImages(prev => prev.map(img => ({ ...img, selected: false })));
         break;
       case 'lower':
         setLowerImages(prev => prev.map(img => ({
           ...img,
           selected: img.id === id
         })));
+        setUpperImages(prev => prev.map(img => ({ ...img, selected: false })));
+        setDressImages(prev => prev.map(img => ({ ...img, selected: false })));
+        break;
+      case 'dress':
+        setDressImages(prev => prev.map(img => ({
+          ...img,
+          selected: img.id === id
+        })));
+        setUpperImages(prev => prev.map(img => ({ ...img, selected: false })));
+        setLowerImages(prev => prev.map(img => ({ ...img, selected: false })));
         break;
     }
   };
@@ -138,64 +270,102 @@ function App() {
 
   const handleBatchProcess = async () => {
     const selectedModel = modelImages.find(img => img.selected)?.file;
-    const selectedProducts = [...upperImages, ...lowerImages].filter(img => img.selected && img.file).map(img => img.file);
-
-    if (!selectedModel || selectedProducts.length === 0) {
-      setError('Please select one model image and at least one product image');
+    const selectedUpper = upperImages.find(img => img.selected && img.file);
+    const selectedLower = lowerImages.find(img => img.selected && img.file);
+    const selectedDress = dressImages.find(img => img.selected && img.file);
+    
+    let clothesType: 'upper' | 'lower' | 'dress';
+    let selectedClothes: ImageUpload | undefined;
+    
+    if (selectedUpper) {
+      clothesType = 'upper';
+      selectedClothes = selectedUpper;
+    } else if (selectedLower) {
+      clothesType = 'lower';
+      selectedClothes = selectedLower;
+    } else if (selectedDress) {
+      clothesType = 'dress';
+      selectedClothes = selectedDress;
+    } else {
+      setError('请选择一件服装');
       return;
     }
 
-    // Reset product image selections
-    setUpperImages(prev => prev.map(img => ({ ...img, selected: false })));
-    setLowerImages(prev => prev.map(img => ({ ...img, selected: false })));
+    if (!selectedModel || !selectedClothes.file) {
+      setError('请选择模特图片和服装图片');
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
     try {
-      const newResults = selectedProducts.map((product, index) => ({
-        id: Date.now().toString() + index,
-        status: 'processing' as const,
-        fileName: product?.name || `Product ${index + 1}`,
-        imageUrl: ''
-      }));
+      const modelFormData = new FormData();
+      modelFormData.append('image', selectedModel);
+      const modelResponse = await axios.post(`${COMFYUI_BASE_URL}/upload/image`, modelFormData);
+      const modelImageName = modelResponse.data.name;
 
-      setResultImages(prev => [...prev, ...newResults]);
+      const clothesFormData = new FormData();
+      clothesFormData.append('image', selectedClothes.file);
+      const clothesResponse = await axios.post(`${COMFYUI_BASE_URL}/upload/image`, clothesFormData);
+      const clothesImageName = clothesResponse.data.name;
 
-      const formData = new FormData();
-      formData.append('model_image', selectedModel);
-      selectedProducts.forEach((product, index) => {
-        if (product) formData.append(`product_image_${index}`, product);
-      });
-
-      const response = await axios.post('YOUR_AI_MODEL_API_ENDPOINT', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-          'Authorization': 'Bearer YOUR_API_KEY'
-        }
-      });
-
-      setResultImages(prev => prev.map(result => {
-        const matchingNew = newResults.find(nr => nr.id === result.id);
-        if (matchingNew) {
-          const index = newResults.indexOf(matchingNew);
-          return {
-            ...result,
-            status: 'completed',
-            imageUrl: response.data.swapped_image_urls[index] || ''
-          };
-        }
-        return result;
-      }));
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to process images. Please try again.';
-      setError(errorMessage);
+      const workflowData = JSON.parse(JSON.stringify(WORKFLOW_API));
       
-      setResultImages(prev => prev.map(result => {
-        if (result.status === 'processing') {
-          return { ...result, status: 'completed', imageUrl: '' };
+      workflowData["1"].inputs.image = modelImageName;
+      
+      workflowData["6"].inputs.image = clothesImageName;
+      
+      workflowData["44"].inputs = {
+        ...workflowData["44"].inputs,
+        ...CLOTHES_CONFIGS[clothesType],
+        process_res: 512,
+        mask_blur: 0,
+        mask_offset: -10,
+        background_color: "Alpha",
+        invert_output: true,
+        images: [clothesImageName]
+      };
+
+      const promptResponse = await axios.post(`${COMFYUI_BASE_URL}/prompt`, {
+        prompt: workflowData,
+        client_id: `${Date.now()}`
+      });
+
+      const checkStatus = async (promptId: string, retryCount = 0) => {
+        try {
+          const statusResponse = await axios.get(`${COMFYUI_BASE_URL}/history/${promptId}`);
+          if (statusResponse.data.status.completed) {
+            const outputs = statusResponse.data.outputs;
+            const imageUrl = `${COMFYUI_BASE_URL}/view?filename=${outputs["14"].images[0].filename}`;
+            setResultImages(prev => [...prev, {
+              id: Date.now().toString(),
+              status: 'completed',
+              fileName: `Result_${clothesType}_${Date.now()}`,
+              imageUrl
+            }]);
+          } else if (statusResponse.data.status.error) {
+            throw new Error(statusResponse.data.status.error);
+          } else {
+            setTimeout(() => checkStatus(promptId, retryCount), 1000);
+          }
+        } catch (err) {
+          if (retryCount < MAX_RETRIES) {
+            setTimeout(() => checkStatus(promptId, retryCount + 1), RETRY_DELAY);
+          } else {
+            throw err;
+          }
         }
-        return result;
-      }));
+      };
+
+      await checkStatus(promptResponse.data.prompt_id);
+    } catch (err) {
+      if (axios.isAxiosError(err)) {
+        setError(`处理失败: ${err.message}`);
+      } else {
+        setError('处理图片时发生未知错误');
+      }
+      console.error('Error:', err);
     } finally {
       setLoading(false);
     }
@@ -207,7 +377,7 @@ function App() {
     onUpload, 
     onRemove 
   }: { 
-    type: 'model' | 'upper' | 'lower', 
+    type: 'model' | 'upper' | 'lower' | 'dress', 
     image: ImageUpload, 
     onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void,
     onRemove: () => void 
@@ -253,6 +423,14 @@ function App() {
       </div>
     </div>
   );
+
+  const isProcessButtonDisabled = loading || 
+    !modelImages.some(img => img.selected) || 
+    !(
+      upperImages.some(img => img.selected) || 
+      lowerImages.some(img => img.selected) ||
+      dressImages.some(img => img.selected)
+    );
 
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -332,11 +510,34 @@ function App() {
             </button>
           </div>
 
+          {/* Dress Images Section */}
+          <div>
+            <h2 className="text-xl font-semibold mb-4">选择连体衣</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {dressImages.map(image => (
+                <ImageUploadComponent
+                  key={image.id}
+                  type="dress"
+                  image={image}
+                  onUpload={(e) => handleImageUpload(e, 'dress', image.id)}
+                  onRemove={() => removeUploadComponent('dress', image.id)}
+                />
+              ))}
+            </div>
+            <button
+              onClick={() => addUploadComponent('dress')}
+              className="mt-4 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              添加连体衣图片
+            </button>
+          </div>
+
           {/* Process Button */}
           <div className="flex justify-center">
             <button
               onClick={handleBatchProcess}
-              disabled={loading || !modelImages.some(img => img.selected) || !upperImages.some(img => img.selected) || !lowerImages.some(img => img.selected)}
+              disabled={isProcessButtonDisabled}
               className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
@@ -347,7 +548,9 @@ function App() {
               ) : (
                 <>
                   <ImageIcon className="-ml-1 mr-3 h-5 w-5" />
-                  Process Selected Images ({selectedProductCount})
+                  {/* Process Selected Images ({selectedProductCount}) */}
+                  Process Selected Images
+
                 </>
               )}
             </button>
