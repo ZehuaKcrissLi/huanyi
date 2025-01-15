@@ -10,7 +10,6 @@ from app.logger import setup_logger
 import itertools
 import utils.extra_config
 import logging
-from fastapi.middleware.cors import CORSMiddleware
 
 if __name__ == "__main__":
     #NOTE: These do not do anything on core ComfyUI which should already have no communication with the internet, they are for custom nodes.
@@ -293,17 +292,7 @@ def start_comfyui(asyncio_loop=None):
 
 if __name__ == "__main__":
     # Running directly, just start ComfyUI.
-    event_loop, prompt_server, start_all_func = start_comfyui()
-    
-    # 添加CORS中间件配置
-    prompt_server.app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-    
+    event_loop, _, start_all_func = start_comfyui()
     try:
         event_loop.run_until_complete(start_all_func())
     except KeyboardInterrupt:
