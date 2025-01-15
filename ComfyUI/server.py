@@ -33,6 +33,7 @@ from app.model_manager import ModelFileManager
 from app.custom_node_manager import CustomNodeManager
 from typing import Optional
 from api_server.routes.internal.internal_routes import InternalRoutes
+from custom_nodes.cors_middleware import setup_cors
 
 class BinaryEventTypes:
     PREVIEW_IMAGE = 1
@@ -171,6 +172,7 @@ class PromptServer():
 
         max_upload_size = round(args.max_upload_size * 1024 * 1024)
         self.app = web.Application(client_max_size=max_upload_size, middlewares=middlewares)
+        setup_cors(self.app)
         self.sockets = dict()
         self.web_root = (
             FrontendManager.init_frontend(args.front_end_version)

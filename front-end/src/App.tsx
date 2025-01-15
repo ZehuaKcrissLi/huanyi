@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { Upload, Image as ImageIcon, Loader, Plus, X, Download, Trash2, Maximize2 } from 'lucide-react';
+import ProgressBar from './components/ProgressBar';
+import { COMFYUI_BASE_URL, WORKFLOW_API, CLOTHES_CONFIGS, MAX_RETRIES, RETRY_DELAY } from './config';
+import type { ComfyUIResponse, HistoryResponse } from './config';
 
 interface ImageUpload {
   id: string;
@@ -43,90 +46,12 @@ interface ClothesSegmentConfig {
   Background: boolean;
 }
 
-const CLOTHES_CONFIGS: Record<'upper' | 'lower' | 'dress', ClothesSegmentConfig> = {
-  upper: {
-    Hat: false,
-    Hair: false,
-    Face: false,
-    Sunglasses: false,
-    'Upper-clothes': true,
-    Skirt: false,
-    Dress: false,
-    Belt: false,
-    Pants: false,
-    'Left-arm': true,
-    'Right-arm': true,
-    'Left-leg': false,
-    'Right-leg': false,
-    Bag: false,
-    Scarf: false,
-    'Left-shoe': false,
-    'Right-shoe': false,
-    Background: false
-  },
-  lower: {
-    Hat: false,
-    Hair: false,
-    Face: false,
-    Sunglasses: false,
-    'Upper-clothes': false,
-    Skirt: true,
-    Dress: false,
-    Belt: false,
-    Pants: true,
-    'Left-arm': false,
-    'Right-arm': false,
-    'Left-leg': true,
-    'Right-leg': true,
-    Bag: false,
-    Scarf: false,
-    'Left-shoe': true,
-    'Right-shoe': true,
-    Background: false
-  },
-  dress: {
-    Hat: false,
-    Hair: false,
-    Face: false,
-    Sunglasses: false,
-    'Upper-clothes': true,
-    Skirt: true,
-    Dress: true,
-    Belt: false,
-    Pants: false,
-    'Left-arm': true,
-    'Right-arm': true,
-    'Left-leg': true,
-    'Right-leg': true,
-    Bag: false,
-    Scarf: false,
-    'Left-shoe': true,
-    'Right-shoe': true,
-    Background: false
-  }
-};
-
-const COMFYUI_BASE_URL = 'http://127.0.0.1:8188';
-
-const WORKFLOW_API = {
-  "1": {
-    "inputs": {
-      "image": "",
-      "upload": "image"
-    },
-    "class_type": "LoadImage"
-  },
-  "6": {
-    "inputs": {
-      "image": "",
-      "upload": "image"
-    },
-    "class_type": "LoadImage"
-  }
-};
-
-const MAX_RETRIES = 3;
-const RETRY_DELAY = 1000; // 1秒
+interface ProcessingStatus {
+  status: 'idle' | 'processing' | 'completed' | 'error';
+  currentStep?: number;
+  totalSteps?: number;
+  message?: string;
+}
 
 function App() {
   const [modelImages, setModelImages] = useState<ImageUpload[]>([
@@ -145,6 +70,9 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [previewModal, setPreviewModal] = useState<PreviewModal>({ isOpen: false, imageUrl: '', fileName: '' });
+  const [processingStatus, setProcessingStatus] = useState<ProcessingStatus>({
+    status: 'idle'
+  });
 
   const selectedProductCount = upperImages.length + lowerImages.length;
 
@@ -269,103 +197,42 @@ function App() {
   };
 
   const handleBatchProcess = async () => {
-    const selectedModel = modelImages.find(img => img.selected)?.file;
-    const selectedUpper = upperImages.find(img => img.selected && img.file);
-    const selectedLower = lowerImages.find(img => img.selected && img.file);
-    const selectedDress = dressImages.find(img => img.selected && img.file);
-    
-    let clothesType: 'upper' | 'lower' | 'dress';
-    let selectedClothes: ImageUpload | undefined;
-    
-    if (selectedUpper) {
-      clothesType = 'upper';
-      selectedClothes = selectedUpper;
-    } else if (selectedLower) {
-      clothesType = 'lower';
-      selectedClothes = selectedLower;
-    } else if (selectedDress) {
-      clothesType = 'dress';
-      selectedClothes = selectedDress;
-    } else {
-      setError('请选择一件服装');
-      return;
-    }
-
-    if (!selectedModel || !selectedClothes.file) {
-      setError('请选择模特图片和服装图片');
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
     try {
-      const modelFormData = new FormData();
-      modelFormData.append('image', selectedModel);
-      const modelResponse = await axios.post(`${COMFYUI_BASE_URL}/upload/image`, modelFormData);
-      const modelImageName = modelResponse.data.name;
-
-      const clothesFormData = new FormData();
-      clothesFormData.append('image', selectedClothes.file);
-      const clothesResponse = await axios.post(`${COMFYUI_BASE_URL}/upload/image`, clothesFormData);
-      const clothesImageName = clothesResponse.data.name;
-
-      const workflowData = JSON.parse(JSON.stringify(WORKFLOW_API));
-      
-      workflowData["1"].inputs.image = modelImageName;
-      
-      workflowData["6"].inputs.image = clothesImageName;
-      
-      workflowData["44"].inputs = {
-        ...workflowData["44"].inputs,
-        ...CLOTHES_CONFIGS[clothesType],
-        process_res: 512,
-        mask_blur: 0,
-        mask_offset: -10,
-        background_color: "Alpha",
-        invert_output: true,
-        images: [clothesImageName]
-      };
-
-      const promptResponse = await axios.post(`${COMFYUI_BASE_URL}/prompt`, {
-        prompt: workflowData,
-        client_id: `${Date.now()}`
-      });
-
-      const checkStatus = async (promptId: string, retryCount = 0) => {
-        try {
-          const statusResponse = await axios.get(`${COMFYUI_BASE_URL}/history/${promptId}`);
-          if (statusResponse.data.status.completed) {
-            const outputs = statusResponse.data.outputs;
-            const imageUrl = `${COMFYUI_BASE_URL}/view?filename=${outputs["14"].images[0].filename}`;
-            setResultImages(prev => [...prev, {
-              id: Date.now().toString(),
-              status: 'completed',
-              fileName: `Result_${clothesType}_${Date.now()}`,
-              imageUrl
-            }]);
-          } else if (statusResponse.data.status.error) {
-            throw new Error(statusResponse.data.status.error);
-          } else {
-            setTimeout(() => checkStatus(promptId, retryCount), 1000);
-          }
-        } catch (err) {
-          if (retryCount < MAX_RETRIES) {
-            setTimeout(() => checkStatus(promptId, retryCount + 1), RETRY_DELAY);
-          } else {
-            throw err;
-          }
-        }
-      };
-
-      await checkStatus(promptResponse.data.prompt_id);
-    } catch (err) {
-      if (axios.isAxiosError(err)) {
-        setError(`处理失败: ${err.message}`);
-      } else {
-        setError('处理图片时发生未知错误');
+      console.log('开始处理...');
+      const selectedModel = modelImages.find(img => img.selected)?.file;
+      if (!selectedModel) {
+        setError('请选择模特图片');
+        return;
       }
-      console.error('Error:', err);
+
+      setLoading(true);
+      console.log('准备上传到:', `${COMFYUI_BASE_URL}/upload/image`);
+
+      const formData = new FormData();
+      formData.append('image', selectedModel);
+
+      const config = {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      };
+
+      const response = await axios.post(
+        `${COMFYUI_BASE_URL}/upload/image`,
+        formData,
+        config
+      );
+
+      console.log('上传响应:', response);
+      
+    } catch (err) {
+      console.error('错误详情:', {
+        message: err.message,
+        status: err.response?.status,
+        statusText: err.response?.statusText,
+        data: err.response?.data,
+      });
+      setError(`上传失败: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -560,6 +427,18 @@ function App() {
           {error && (
             <div className="text-red-600 text-center text-sm mt-2">
               {error}
+            </div>
+          )}
+
+          {/* Process Button 和 Error Message 之后 */}
+          {processingStatus.status !== 'idle' && (
+            <div className="mt-6">
+              <ProgressBar
+                currentStep={processingStatus.currentStep}
+                totalSteps={processingStatus.totalSteps}
+                status={processingStatus.status}
+                message={processingStatus.message}
+              />
             </div>
           )}
 
