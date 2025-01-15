@@ -1,5 +1,5 @@
 // ComfyUI API基础配置
-export const COMFYUI_BASE_URL = 'http://129.204.157.41:8188';
+export const COMFYUI_BASE_URL = 'http://119.29.251.80:8188';
 
 // 服装类型对应的RMBG配置
 export const CLOTHES_CONFIGS = {

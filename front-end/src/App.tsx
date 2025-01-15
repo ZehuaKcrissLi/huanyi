@@ -4,6 +4,7 @@ import { Upload, Image as ImageIcon, Loader, Plus, X, Download, Trash2, Maximize
 import ProgressBar from './components/ProgressBar';
 import { COMFYUI_BASE_URL, WORKFLOW_API, CLOTHES_CONFIGS, MAX_RETRIES, RETRY_DELAY } from './config';
 import type { ComfyUIResponse, HistoryResponse } from './config';
+import { uploadImage, processImage } from './services/api';
 
 interface ImageUpload {
   id: string;
@@ -73,6 +74,7 @@ function App() {
   const [processingStatus, setProcessingStatus] = useState<ProcessingStatus>({
     status: 'idle'
   });
+  const [resultImage, setResultImage] = useState<string | null>(null);
 
   const selectedProductCount = upperImages.length + lowerImages.length;
 
@@ -206,33 +208,28 @@ function App() {
       }
 
       setLoading(true);
-      console.log('准备上传到:', `${COMFYUI_BASE_URL}/upload/image`);
-
-      const formData = new FormData();
-      formData.append('image', selectedModel);
-
-      const config = {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      };
-
-      const response = await axios.post(
-        `${COMFYUI_BASE_URL}/upload/image`,
-        formData,
-        config
-      );
-
-      console.log('上传响应:', response);
       
-    } catch (err) {
+      // 1. 上传图片
+      const uploadResponse = await uploadImage(selectedModel);
+      console.log('上传响应:', uploadResponse);
+
+      // 2. 处理图片（使用mock数据）
+      const processResponse = await processImage('mock-image-id');
+      console.log('处理响应:', processResponse);
+
+      // 3. 显示结果图片
+      if (processResponse.success) {
+        setResultImage(processResponse.data.imageUrl);
+      }
+      
+    } catch (err: any) {
       console.error('错误详情:', {
         message: err.message,
         status: err.response?.status,
         statusText: err.response?.statusText,
         data: err.response?.data,
       });
-      setError(`上传失败: ${err.message}`);
+      setError(`处理失败: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -559,6 +556,13 @@ function App() {
               onClick={(e) => e.stopPropagation()}
             />
           </div>
+        </div>
+      )}
+
+      {resultImage && (
+        <div className="result-container">
+          <h3>处理结果：</h3>
+          <img src={resultImage} alt="处理结果" style={{ maxWidth: '100%' }} />
         </div>
       )}
     </div>
